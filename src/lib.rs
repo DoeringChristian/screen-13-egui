@@ -18,6 +18,7 @@ pub struct Egui {
     egui_ctx: egui::Context,
     egui_winit: egui_winit::State,
     textures: HashMap<egui::TextureId, ImageLeaseBinding<ArcK>>,
+    tmp_tex: Option<ImageLeaseBinding<ArcK>>,
 }
 
 impl Egui {
@@ -51,6 +52,7 @@ impl Egui {
             egui_ctx: egui::Context::default(),
             egui_winit,
             textures: HashMap::default(),
+            tmp_tex: None,
         }
     }
 
@@ -62,6 +64,7 @@ impl Egui {
         ui_fn: impl FnMut(&egui::Context),
     ) {
         let dst = dst.into();
+        let dst_info = render_graph.node_info(dst);
 
         let raw_input = self.egui_winit.take_egui_input(window);
         let full_output = self.egui_ctx.run(raw_input, ui_fn);
@@ -73,6 +76,19 @@ impl Egui {
         self.tex_delta.append(full_output.textures_delta);
 
         if full_output.needs_repaint {
+            let img = {
+                let img = self
+                    .pool
+                    .lease(ImageInfo::new_2d(
+                        vk::Format::R8G8B8A8_UNORM,
+                        dst_info.width,
+                        dst_info.height,
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+                    ))
+                    .unwrap();
+                ImageLeaseBinding(img)
+            }.bind(render_graph);
+
             let shapes = std::mem::take(&mut self.shapes);
             let tex_delta = std::mem::take(&mut self.tex_delta);
             let clipped_primitives = self.egui_ctx.tessellate(shapes);
@@ -84,7 +100,7 @@ impl Egui {
             }
 
             self.paint_primitives(
-                dst,
+                AnyImageNode::ImageLease(img),
                 render_graph,
                 self.egui_ctx.pixels_per_point(),
                 &bound_tex,
@@ -98,6 +114,13 @@ impl Egui {
             for (id, tex) in bound_tex.iter() {
                 self.textures.insert(*id, render_graph.unbind_node(*tex));
             }
+            render_graph.copy_image(img, dst);
+            self.tmp_tex = Some(render_graph.unbind_node(img));
+        }
+        else{
+            let img = self.tmp_tex.take().unwrap().bind(render_graph);
+            render_graph.copy_image(img, dst);
+            self.tmp_tex = Some(render_graph.unbind_node(img));
         }
     }
 
@@ -177,8 +200,8 @@ impl Egui {
             };
 
             let num_indices = mesh.indices.len() as u32;
-            trace!("target_idx: {:#?}", target);
-            let pass = render_graph
+
+            render_graph
                 .begin_pass("Egui pass")
                 .bind_pipeline(&self.pipeline)
                 .read_descriptor((0, 0), *texture)
@@ -199,9 +222,11 @@ impl Egui {
                     subpass.draw_indexed(num_indices, 1, 0, 0, 0);
                 });
 
+            /*
 
             render_graph.unbind_node(idx_buf);
             render_graph.unbind_node(vert_buf);
+            */
         }
     }
 
