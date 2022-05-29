@@ -18,7 +18,7 @@ pub struct Egui {
     egui_ctx: egui::Context,
     egui_winit: egui_winit::State,
     textures: HashMap<egui::TextureId, ImageLeaseBinding<ArcK>>,
-    tmp_tex: Option<ImageLeaseBinding<ArcK>>,
+    tmp_tex: Option<ImageBinding>,
 }
 
 impl Egui {
@@ -76,6 +76,7 @@ impl Egui {
         self.tex_delta.append(full_output.textures_delta);
 
         if full_output.needs_repaint {
+            /*
             let img = {
                 let img = self
                     .pool
@@ -88,6 +89,14 @@ impl Egui {
                     .unwrap();
                 ImageLeaseBinding(img)
             }.bind(render_graph);
+            */
+
+            let img = ImageBinding::new(Image::create(&self.pool.device, ImageInfo::new_2d(
+                        vk::Format::R8G8B8A8_UNORM,
+                        dst_info.width,
+                        dst_info.height,
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+            )).unwrap()).bind(render_graph);
 
             let shapes = std::mem::take(&mut self.shapes);
             let tex_delta = std::mem::take(&mut self.tex_delta);
@@ -100,7 +109,7 @@ impl Egui {
             }
 
             self.paint_primitives(
-                AnyImageNode::ImageLease(img),
+                AnyImageNode::Image(img),
                 render_graph,
                 self.egui_ctx.pixels_per_point(),
                 &bound_tex,
