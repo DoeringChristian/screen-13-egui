@@ -76,27 +76,15 @@ impl Egui {
         self.tex_delta.append(full_output.textures_delta);
 
         if full_output.needs_repaint {
-            /*
-            let img = {
-                let img = self
-                    .pool
-                    .lease(ImageInfo::new_2d(
-                        vk::Format::R8G8B8A8_UNORM,
-                        dst_info.width,
-                        dst_info.height,
-                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
-                    ))
-                    .unwrap();
-                ImageLeaseBinding(img)
-            }.bind(render_graph);
-            */
-
+            trace!("Repaint");
             let img = ImageBinding::new(Image::create(&self.pool.device, ImageInfo::new_2d(
                         vk::Format::R8G8B8A8_UNORM,
                         dst_info.width,
                         dst_info.height,
-                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
             )).unwrap()).bind(render_graph);
+
+            render_graph.clear_color_image(img);
 
             let shapes = std::mem::take(&mut self.shapes);
             let tex_delta = std::mem::take(&mut self.tex_delta);
@@ -123,6 +111,7 @@ impl Egui {
             for (id, tex) in bound_tex.iter() {
                 self.textures.insert(*id, render_graph.unbind_node(*tex));
             }
+
             render_graph.copy_image(img, dst);
             self.tmp_tex = Some(render_graph.unbind_node(img));
         }
@@ -213,10 +202,11 @@ impl Egui {
             render_graph
                 .begin_pass("Egui pass")
                 .bind_pipeline(&self.pipeline)
-                .read_descriptor((0, 0), *texture)
                 .access_node(idx_buf, AccessType::IndexBuffer)
                 .access_node(vert_buf, AccessType::VertexBuffer)
-                .clear_color(0)
+                //.clear_color(0)
+                .access_descriptor((0, 0), *texture, AccessType::FragmentShaderReadOther)
+                .load_color(0, target)
                 .store_color(0, target)
                 .record_subpass(move |subpass| {
                     subpass.bind_index_buffer(idx_buf, vk::IndexType::UINT32);
@@ -232,7 +222,6 @@ impl Egui {
                 });
 
             /*
-
             render_graph.unbind_node(idx_buf);
             render_graph.unbind_node(vert_buf);
             */
@@ -283,7 +272,7 @@ impl Egui {
                     buffer_image_height: 0,
                     image_offset: vk::Offset3D {
                         x: pos[0] as i32,
-                        y: pos[0] as i32,
+                        y: pos[1] as i32,
                         z: 0,
                     },
                     image_extent: vk::Extent3D {
