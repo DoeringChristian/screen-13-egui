@@ -9,7 +9,7 @@ pub use {
 };
 
 pub struct Egui {
-    pub egui_ctx: egui::Context,
+    pub ctx: egui::Context,
     egui_winit: egui_winit::State,
     textures: HashMap<egui::TextureId, ImageLeaseBinding<ArcK>>,
     cache: HashPool,
@@ -51,7 +51,7 @@ impl Egui {
         );
         Self {
             ppl,
-            egui_ctx: egui::Context::default(),
+            ctx: egui::Context::default(),
             egui_winit: egui_winit::State::new(10000, window),
             textures: HashMap::default(),
             cache: HashPool::new(device),
@@ -133,7 +133,6 @@ impl Egui {
                             delta.image.width() as u32,
                             delta.image.height() as u32,
                             vk::ImageUsageFlags::SAMPLED
-                                | vk::ImageUsageFlags::STORAGE
                                 | vk::ImageUsageFlags::TRANSFER_DST,
                         ))
                         .unwrap()
@@ -198,7 +197,7 @@ impl Egui {
         for egui::ClippedPrimitive {
             clip_rect,
             primitive,
-        } in self.egui_ctx.tessellate(shapes)
+        } in self.ctx.tessellate(shapes)
         {
             match primitive {
                 egui::epaint::Primitive::Mesh(mesh) => {
@@ -252,8 +251,8 @@ impl Egui {
 
                     let push_constants = PushConstants {
                         screen_size: [
-                            target_info.width as f32 / self.egui_ctx.pixels_per_point(),
-                            target_info.height as f32 / self.egui_ctx.pixels_per_point(),
+                            target_info.width as f32 / self.ctx.pixels_per_point(),
+                            target_info.height as f32 / self.ctx.pixels_per_point(),
                         ],
                     };
 
@@ -297,16 +296,16 @@ impl Egui {
         for event in events {
             match event {
                 Event::WindowEvent { event, .. } => {
-                    self.egui_winit.on_event(&self.egui_ctx, event);
+                    self.egui_winit.on_event(&self.ctx, event);
                 }
                 _ => {}
             }
         }
         let raw_input = self.egui_winit.take_egui_input(window);
-        let full_output = self.egui_ctx.run(raw_input, ui_fn);
+        let full_output = self.ctx.run(raw_input, ui_fn);
 
         self.egui_winit
-            .handle_platform_output(window, &self.egui_ctx, full_output.platform_output);
+            .handle_platform_output(window, &self.ctx, full_output.platform_output);
 
         let deltas = full_output.textures_delta;
 
