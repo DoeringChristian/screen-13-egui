@@ -14,5 +14,5 @@ egui = { version = "0.18.0", default-features = false, features = [
 ] }
 egui-winit = { version = "0.18.0",  default-features = false }
 inline-spirv = "0.1"
-screen-13 = { git = "https://github.com/attackgoat/screen-13.git" }
+screen-13 = { path = "../screen-13-doeringc" }
 screen-13-fx = { git = "https://github.com/attackgoat/screen-13.git" }

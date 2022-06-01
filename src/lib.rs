@@ -22,7 +22,17 @@ impl Egui {
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new()
-                    .blend(BlendMode::PreMultipliedAlpha)
+                    .blend(BlendMode {
+                        blend_enable: vk::TRUE,
+                        src_color_blend_factor: vk::BlendFactor::ONE,
+                        dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                        color_blend_op: vk::BlendOp::ADD,
+                        src_alpha_blend_factor: vk::BlendFactor::ONE,
+                        dst_alpha_blend_factor: vk::BlendFactor::ONE,
+                        alpha_blend_op: vk::BlendOp::ADD,
+                        // Have to construct it from raw bits since | operator is not const.
+                        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+                    })
                     .cull_mode(vk::CullModeFlags::NONE),
                 [
                     Shader::new_vertex(
@@ -46,7 +56,11 @@ impl Egui {
         }
     }
 
-    fn bind_and_update_textures(&mut self, deltas: &egui::TexturesDelta, render_graph: &mut RenderGraph) -> HashMap<egui::TextureId, ImageLeaseNode<ArcK>>{
+    fn bind_and_update_textures(
+        &mut self,
+        deltas: &egui::TexturesDelta,
+        render_graph: &mut RenderGraph,
+    ) -> HashMap<egui::TextureId, ImageLeaseNode<ArcK>> {
         let mut bound_tex = deltas
             .set
             .iter()
@@ -63,7 +77,8 @@ impl Egui {
                 };
 
                 let tmp_buf = {
-                    let mut buf = self.cache
+                    let mut buf = self
+                        .cache
                         .lease(BufferInfo::new_mappable(
                             (pixels.len() * 4) as u64,
                             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -74,7 +89,8 @@ impl Egui {
                 };
 
                 if let Some(pos) = delta.pos {
-                    let image = self.textures
+                    let image = self
+                        .textures
                         .remove(&id)
                         .expect("Tried updating undefined texture.")
                         .bind(render_graph);
@@ -106,7 +122,8 @@ impl Egui {
                     );
                     (*id, image)
                 } else {
-                    let image = self.cache
+                    let image = self
+                        .cache
                         .lease(ImageInfo::new_2d(
                             vk::Format::R8G8B8A8_UNORM,
                             delta.image.width() as u32,
@@ -132,7 +149,12 @@ impl Egui {
         bound_tex
     }
 
-    fn unbind_and_free(&mut self, bound_tex: HashMap<egui::TextureId, ImageLeaseNode<ArcK>>, render_graph: &mut RenderGraph, deltas: &egui::TexturesDelta){
+    fn unbind_and_free(
+        &mut self,
+        bound_tex: HashMap<egui::TextureId, ImageLeaseNode<ArcK>>,
+        render_graph: &mut RenderGraph,
+        deltas: &egui::TexturesDelta,
+    ) {
         // Unbind textures
         for (id, tex) in bound_tex.iter() {
             self.textures.insert(*id, render_graph.unbind_node(*tex));
@@ -144,7 +166,13 @@ impl Egui {
         }
     }
 
-    fn draw_primitive(&mut self, shapes: Vec<egui::epaint::ClippedShape>, bound_tex: &HashMap<egui::TextureId, ImageLeaseNode<ArcK>>, render_graph: &mut RenderGraph, target: impl Into<AnyImageNode>){
+    fn draw_primitive(
+        &mut self,
+        shapes: Vec<egui::epaint::ClippedShape>,
+        bound_tex: &HashMap<egui::TextureId, ImageLeaseNode<ArcK>>,
+        render_graph: &mut RenderGraph,
+        target: impl Into<AnyImageNode>,
+    ) {
         let target = target.into();
         let target_info = render_graph.node_info(target);
         for egui::ClippedPrimitive {
@@ -156,13 +184,14 @@ impl Egui {
                 egui::epaint::Primitive::Mesh(mesh) => {
                     // Skip when there are no vertices to paint since we cannot allocate a buffer
                     // of length 0
-                    if mesh.vertices.is_empty() || mesh.indices.is_empty(){
+                    if mesh.vertices.is_empty() || mesh.indices.is_empty() {
                         continue;
                     }
                     let texture = bound_tex.get(&mesh.texture_id).unwrap();
 
                     let idx_buf = {
-                        let mut buf = self.cache
+                        let mut buf = self
+                            .cache
                             .lease(BufferInfo::new_mappable(
                                 (mesh.indices.len() * 4) as u64,
                                 vk::BufferUsageFlags::INDEX_BUFFER,
@@ -178,7 +207,8 @@ impl Egui {
                     let idx_buf = render_graph.bind_node(idx_buf);
 
                     let vert_buf = {
-                        let mut buf = self.cache
+                        let mut buf = self
+                            .cache
                             .lease(BufferInfo::new_mappable(
                                 (mesh.vertices.len() * std::mem::size_of::<egui::epaint::Vertex>())
                                     as u64,
@@ -262,7 +292,6 @@ impl Egui {
 
         let deltas = full_output.textures_delta;
 
-        
         let bound_tex = self.bind_and_update_textures(&deltas, render_graph);
 
         self.draw_primitive(full_output.shapes, &bound_tex, render_graph, target);
