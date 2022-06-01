@@ -12,11 +12,21 @@ layout(push_constant) uniform PushConstants{
 };
 
 
+vec4 linear_from_srgba(vec4 sRGB)
+{
+    bvec4 cutoff = lessThan(sRGB, vec4(0.04045));
+    vec4 higher = pow((sRGB + vec4(0.055))/vec4(1.055), vec4(2.4));
+    vec4 lower = sRGB/vec4(12.92);
+
+    return mix(higher, lower, cutoff);
+}
+
 void main(){
     gl_Position = vec4(
             2.0 * i_pos.x / screen_size.x - 1.0,
             2.0 * i_pos.y / screen_size.y - 1.0,
             0.0, 1.0);
     o_color = unpackUnorm4x8(i_color);
+    o_color = linear_from_srgba(o_color);
     o_uv = i_uv;
 }

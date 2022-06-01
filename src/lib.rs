@@ -9,7 +9,7 @@ pub use {
 };
 
 pub struct Egui {
-    egui_ctx: egui::Context,
+    pub egui_ctx: egui::Context,
     egui_winit: egui_winit::State,
     textures: HashMap<egui::TextureId, ImageLeaseBinding<ArcK>>,
     cache: HashPool,
@@ -154,6 +154,11 @@ impl Egui {
         {
             match primitive {
                 egui::epaint::Primitive::Mesh(mesh) => {
+                    // Skip when there are no vertices to paint since we cannot allocate a buffer
+                    // of length 0
+                    if mesh.vertices.is_empty() || mesh.indices.is_empty(){
+                        continue;
+                    }
                     let texture = bound_tex.get(&mesh.texture_id).unwrap();
 
                     let idx_buf = {
@@ -188,6 +193,8 @@ impl Egui {
                         buf
                     };
                     let vert_buf = render_graph.bind_node(vert_buf);
+
+                    trace!("verts: {:#?}", mesh.vertices[0]);
 
                     #[repr(C)]
                     #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
