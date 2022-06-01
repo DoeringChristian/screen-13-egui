@@ -14,6 +14,8 @@ pub struct Egui {
     textures: HashMap<egui::TextureId, ImageLeaseBinding<ArcK>>,
     cache: HashPool,
     ppl: SharedPointer<GraphicPipeline, ArcK>,
+    next_tex_id: u64,
+    user_textures: HashMap<egui::TextureId, AnyImageNode>,
 }
 
 impl Egui {
@@ -53,6 +55,8 @@ impl Egui {
             egui_winit: egui_winit::State::new(10000, window),
             textures: HashMap::default(),
             cache: HashPool::new(device),
+            next_tex_id: 0,
+            user_textures: HashMap::default(),
         }
     }
 
@@ -60,7 +64,7 @@ impl Egui {
         &mut self,
         deltas: &egui::TexturesDelta,
         render_graph: &mut RenderGraph,
-    ) -> HashMap<egui::TextureId, ImageLeaseNode<ArcK>> {
+    ) -> HashMap<egui::TextureId, AnyImageNode> {
         let mut bound_tex = deltas
             .set
             .iter()
@@ -89,11 +93,11 @@ impl Egui {
                 };
 
                 if let Some(pos) = delta.pos {
-                    let image = self
+                    let image = AnyImageNode::ImageLease(self
                         .textures
                         .remove(&id)
                         .expect("Tried updating undefined texture.")
-                        .bind(render_graph);
+                        .bind(render_graph));
 
                     render_graph.copy_buffer_to_image_region(
                         tmp_buf,
@@ -122,7 +126,7 @@ impl Egui {
                     );
                     (*id, image)
                 } else {
-                    let image = self
+                    let image = AnyImageNode::ImageLease(self
                         .cache
                         .lease(ImageInfo::new_2d(
                             vk::Format::R8G8B8A8_UNORM,
@@ -133,7 +137,7 @@ impl Egui {
                                 | vk::ImageUsageFlags::TRANSFER_DST,
                         ))
                         .unwrap()
-                        .bind(render_graph);
+                        .bind(render_graph));
 
                     render_graph.copy_buffer_to_image(tmp_buf, image);
                     render_graph.unbind_node(tmp_buf);
@@ -144,32 +148,48 @@ impl Egui {
 
         // Bind the rest of the textures.
         for (id, image) in self.textures.drain() {
-            bound_tex.insert(id, render_graph.bind_node(image));
+            bound_tex.insert(id, AnyImageNode::ImageLease(render_graph.bind_node(image)));
         }
+
+        // Add user textures.
+        for (id, node) in self.user_textures.drain(){
+            bound_tex.insert(id, node);
+        }
+        
         bound_tex
     }
 
     fn unbind_and_free(
         &mut self,
-        bound_tex: HashMap<egui::TextureId, ImageLeaseNode<ArcK>>,
+        bound_tex: HashMap<egui::TextureId, AnyImageNode>,
         render_graph: &mut RenderGraph,
         deltas: &egui::TexturesDelta,
     ) {
         // Unbind textures
         for (id, tex) in bound_tex.iter() {
-            self.textures.insert(*id, render_graph.unbind_node(*tex));
+            match tex{
+                AnyImageNode::ImageLease(tex) => {
+                    // Unly unbind managed textures.
+                    if let egui::TextureId::Managed(_) = *id{
+                        self.textures.insert(*id, render_graph.unbind_node(*tex));
+                    }
+                }
+                _ => {}
+            }
         }
 
         // Free textures.
         for id in deltas.free.iter() {
             self.textures.remove(&id);
         }
+
+        self.next_tex_id = 0;
     }
 
     fn draw_primitive(
         &mut self,
         shapes: Vec<egui::epaint::ClippedShape>,
-        bound_tex: &HashMap<egui::TextureId, ImageLeaseNode<ArcK>>,
+        bound_tex: &HashMap<egui::TextureId, AnyImageNode>,
         render_graph: &mut RenderGraph,
         target: impl Into<AnyImageNode>,
     ) {
@@ -223,8 +243,6 @@ impl Egui {
                         buf
                     };
                     let vert_buf = render_graph.bind_node(vert_buf);
-
-                    trace!("verts: {:#?}", mesh.vertices[0]);
 
                     #[repr(C)]
                     #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -297,5 +315,12 @@ impl Egui {
         self.draw_primitive(full_output.shapes, &bound_tex, render_graph, target);
 
         self.unbind_and_free(bound_tex, render_graph, &deltas);
+    }
+
+    pub fn register_texture(&mut self, tex: impl Into<AnyImageNode>) -> egui::TextureId{
+        let id = egui::TextureId::User(self.next_tex_id);
+        self.next_tex_id += 1;
+        self.user_textures.insert(id, tex.into());
+        id
     }
 }
