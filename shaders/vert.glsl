@@ -12,11 +12,11 @@ layout(push_constant) uniform PushConstants{
 };
 
 
-vec4 linear_from_srgba(vec4 sRGB)
+vec4 linear_from_srgba(vec4 srgba)
 {
-    bvec4 cutoff = lessThan(sRGB, vec4(0.04045));
-    vec4 higher = pow((sRGB + vec4(0.055))/vec4(1.055), vec4(2.4));
-    vec4 lower = sRGB/vec4(12.92);
+    bvec4 cutoff = lessThan(srgba, vec4(0.04045));
+    vec4 higher = pow((srgba + vec4(0.055))/vec4(1.055), vec4(2.4));
+    vec4 lower = srgba/vec4(12.92);
 
     return mix(higher, lower, cutoff);
 }
