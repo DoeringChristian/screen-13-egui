@@ -32,8 +32,10 @@ impl Egui {
                         src_alpha_blend_factor: vk::BlendFactor::ONE,
                         dst_alpha_blend_factor: vk::BlendFactor::ONE,
                         alpha_blend_op: vk::BlendOp::ADD,
-                        // Have to construct it from raw bits since | operator is not const.
-                        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+                        color_write_mask: vk::ColorComponentFlags::R
+                            | vk::ColorComponentFlags::G
+                            | vk::ColorComponentFlags::B
+                            | vk::ColorComponentFlags::A,
                     })
                     .cull_mode(vk::CullModeFlags::NONE),
                 [
@@ -93,11 +95,12 @@ impl Egui {
                 };
 
                 if let Some(pos) = delta.pos {
-                    let image = AnyImageNode::ImageLease(self
-                        .textures
-                        .remove(&id)
-                        .expect("Tried updating undefined texture.")
-                        .bind(render_graph));
+                    let image = AnyImageNode::ImageLease(
+                        self.textures
+                            .remove(&id)
+                            .expect("Tried updating undefined texture.")
+                            .bind(render_graph),
+                    );
 
                     render_graph.copy_buffer_to_image_region(
                         tmp_buf,
@@ -126,17 +129,17 @@ impl Egui {
                     );
                     (*id, image)
                 } else {
-                    let image = AnyImageNode::ImageLease(self
-                        .cache
-                        .lease(ImageInfo::new_2d(
-                            vk::Format::R8G8B8A8_UNORM,
-                            delta.image.width() as u32,
-                            delta.image.height() as u32,
-                            vk::ImageUsageFlags::SAMPLED
-                                | vk::ImageUsageFlags::TRANSFER_DST,
-                        ))
-                        .unwrap()
-                        .bind(render_graph));
+                    let image = AnyImageNode::ImageLease(
+                        self.cache
+                            .lease(ImageInfo::new_2d(
+                                vk::Format::R8G8B8A8_UNORM,
+                                delta.image.width() as u32,
+                                delta.image.height() as u32,
+                                vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+                            ))
+                            .unwrap()
+                            .bind(render_graph),
+                    );
 
                     render_graph.copy_buffer_to_image(tmp_buf, image);
                     render_graph.unbind_node(tmp_buf);
@@ -151,10 +154,10 @@ impl Egui {
         }
 
         // Add user textures.
-        for (id, node) in self.user_textures.drain(){
+        for (id, node) in self.user_textures.drain() {
             bound_tex.insert(id, node);
         }
-        
+
         bound_tex
     }
 
@@ -166,10 +169,10 @@ impl Egui {
     ) {
         // Unbind textures
         for (id, tex) in bound_tex.iter() {
-            match tex{
+            match tex {
                 AnyImageNode::ImageLease(tex) => {
                     // Unly unbind managed textures.
-                    if let egui::TextureId::Managed(_) = *id{
+                    if let egui::TextureId::Managed(_) = *id {
                         self.textures.insert(*id, render_graph.unbind_node(*tex));
                     }
                 }
@@ -316,7 +319,7 @@ impl Egui {
         self.unbind_and_free(bound_tex, render_graph, &deltas);
     }
 
-    pub fn register_texture(&mut self, tex: impl Into<AnyImageNode>) -> egui::TextureId{
+    pub fn register_texture(&mut self, tex: impl Into<AnyImageNode>) -> egui::TextureId {
         let id = egui::TextureId::User(self.next_tex_id);
         self.next_tex_id += 1;
         self.user_textures.insert(id, tex.into());
